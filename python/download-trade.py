@@ -16,6 +16,21 @@ from utility import download_file, get_all_symbols, get_parser, get_start_end_da
   get_path
 
 
+import concurrent.futures
+from datetime import datetime
+
+def download_monthly_files(symbol, year, month, trading_type, date_range, folder, checksum, start_date, end_date):
+    current_date = convert_to_date_object('{}-{}-01'.format(year, month))
+    if current_date >= start_date and current_date <= end_date:
+        path = get_path(trading_type, "trades", "monthly", symbol)
+        file_name = "{}-trades-{}-{}.zip".format(symbol.upper(), year, '{:02d}'.format(month))
+        download_file(path, file_name, date_range, folder,print_progress=False)
+
+        if checksum == 1:
+            checksum_path = get_path(trading_type, "trades", "monthly", symbol)
+            checksum_file_name = "{}-trades-{}-{}.zip.CHECKSUM".format(symbol.upper(), year, '{:02d}'.format(month))
+            download_file(checksum_path, checksum_file_name, date_range, folder,print_progress=False)
+
 def download_monthly_trades(trading_type, symbols, num_symbols, years, months, start_date, end_date, folder, checksum):
   current = 0
   date_range = None
@@ -37,20 +52,15 @@ def download_monthly_trades(trading_type, symbols, num_symbols, years, months, s
 
   for symbol in symbols:
     print("[{}/{}] - start download monthly {} trades ".format(current+1, num_symbols, symbol))
-    for year in years:
-      for month in months:
-        current_date = convert_to_date_object('{}-{}-01'.format(year, month))
-        if current_date >= start_date and current_date <= end_date:
-          path = get_path(trading_type, "trades", "monthly", symbol)
-          file_name = "{}-trades-{}-{}.zip".format(symbol.upper(), year, '{:02d}'.format(month))
-          download_file(path, file_name, date_range, folder)
-
-          if checksum == 1:
-            checksum_path = get_path(trading_type, "trades", "monthly", symbol)
-            checksum_file_name = "{}-trades-{}-{}.zip.CHECKSUM".format(symbol.upper(), year, '{:02d}'.format(month))
-            download_file(checksum_path, checksum_file_name, date_range, folder)
-    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=100) as executor:
+      print(f'Using max {executor._max_workers} workers')        
+      futures = []
+      for year in years:
+        for month in months:
+          futures.append(executor.submit(download_monthly_files, symbol, year, month, trading_type, date_range, folder, checksum, start_date, end_date))
+      concurrent.futures.wait(futures)
     current += 1
+
 
 def download_daily_trades(trading_type, symbols, num_symbols, dates, start_date, end_date, folder, checksum):
   current = 0

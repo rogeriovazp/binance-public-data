@@ -26,7 +26,7 @@ def get_all_symbols(type):
     response = urllib.request.urlopen("https://api.binance.com/api/v3/exchangeInfo").read()
   return list(map(lambda symbol: symbol['symbol'], json.loads(response)['symbols']))
 
-def download_file(base_path, file_name, date_range=None, folder=None):
+def download_file(base_path, file_name, date_range=None, folder=None,print_progress=True):
   download_path = "{}{}".format(base_path, file_name)
   if folder:
     base_path = os.path.join(folder, base_path)
@@ -62,8 +62,9 @@ def download_file(base_path, file_name, date_range=None, folder=None):
         dl_progress += len(buf)
         out_file.write(buf)
         done = int(50 * dl_progress / length)
-        sys.stdout.write("\r[%s%s]" % ('#' * done, '.' * (50-done)) )    
-        sys.stdout.flush()
+        if print_progress:
+          sys.stdout.write("\r[%s%s]" % ('#' * done, '.' * (50-done)) )    
+          sys.stdout.flush()
 
   except urllib.error.HTTPError:
     print("\nFile not found: {}".format(download_url))
