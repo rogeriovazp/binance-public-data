@@ -4,7 +4,13 @@ from pathlib import Path
 from datetime import *
 import urllib.request
 from argparse import ArgumentParser, RawTextHelpFormatter, ArgumentTypeError
+
+from bs4 import BeautifulSoup
 from enums import *
+import boto3
+from botocore import UNSIGNED
+from botocore.client import Config
+import urllib.parse
 
 
 def get_destination_dir(file_url, folder=None):
@@ -36,6 +42,75 @@ def get_all_symbols(type):
     return list(map(lambda symbol: symbol["symbol"], json.loads(response)["symbols"]))
 
 
+def check_link_in_html(html, file_name):
+
+    # Parse the HTML page using BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Find all links in the HTML page
+    links = soup.find_all("a")
+
+    # Check if any of the links point to the file we're looking for
+    for link in links:
+        href = link.get("href")
+        if href and file_name in href:
+            return True
+
+    return False
+
+
+def find_file_in_s3_bucket(objects, file_name):
+    """
+    Finds a file in an S3 bucket given a list of objects.
+
+    Args:
+        objects (list): A list of objects in the bucket.
+        file_name (str): The name of the file to search for.
+
+    Returns:
+        str: The URL of the file if found, None otherwise.
+    """
+    # Iterate over the objects and check if the file name matches
+    for obj in objects:
+        if obj["Key"].endswith(file_name):
+            return True
+
+    return False
+
+
+def list_objects_in_s3_bucket(bucket, folder_path):
+    """
+    Lists objects in an S3 bucket given a URL.
+
+    Args:
+        url (str): The URL of the S3 bucket to list objects from.
+
+    Returns:
+        list: A list of objects in the bucket.
+    """
+
+    # Create an S3 client
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
+
+    # Get the list of objects in the bucket
+    objects = s3.list_objects_v2(Bucket=bucket, Prefix=folder_path)
+
+    return objects["Contents"]
+
+
+def get_html_page(
+    trading_type,
+    market_data_type,
+    time_period,
+    symbol,
+    interval=None,
+):
+    path = get_path(trading_type, market_data_type, time_period, symbol, interval)
+    url = f"https://s3-ap-northeast-1.amazonaws.com/data.binance.vision?delimiter=/&{path}"  # noqa
+
+    return url
+
+
 def download_file(
     base_path, file_name, date_range=None, folder=None, print_progress=True
 ):
@@ -49,7 +124,7 @@ def download_file(
 
     if os.path.exists(save_path):
         print("\nfile already exists! {}".format(save_path))
-        return
+        return download_path
 
     # make the directory
     if not os.path.exists(base_path):
@@ -76,10 +151,11 @@ def download_file(
                 if print_progress:
                     sys.stdout.write("\r[%s%s]" % ("#" * done, "." * (50 - done)))
                     sys.stdout.flush()
+            return download_path
 
     except urllib.error.HTTPError:
         print("\nFile not found: {}".format(download_url))
-        pass
+        return download_path
 
 
 def convert_to_date_object(d):
